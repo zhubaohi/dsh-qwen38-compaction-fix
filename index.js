@@ -266,6 +266,24 @@ function policyOf(config) {
 }
 
 /**
+ * Extract the plain text of a chat-completion message content, whatever its
+ * wire shape: a plain string, or an array of content blocks (the `text`
+ * fields of the text-bearing blocks, joined). Anything else yields "".
+ * @param content - the message's `content` field as parsed from the body.
+ * @returns the concatenated text content.
+ */
+function messageText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((block) => block !== null && typeof block === "object" && typeof block.text === "string")
+      .map((block) => block.text)
+      .join("\n");
+  }
+  return "";
+}
+
+/**
  * Whether the parsed body's `model` field is in the allow-list. Conservative:
  * a missing or non-string `model` never matches (no rewrite).
  * @param body - the parsed JSON chat-completion body.
@@ -304,8 +322,13 @@ export function rewriteCompactionBody(init, policy) {
   if (!Array.isArray(body.messages) || body.messages.length === 0) return false;
   const last = body.messages[body.messages.length - 1];
   if (last === null || typeof last !== "object" || last.role !== "user") return false;
-  const text = typeof last.content === "string" ? last.content : JSON.stringify(last.content ?? "");
-  if (!text.includes(COMPACTION_SIGNATURE)) return false;
+  // The compaction engine appends its instruction as the FINAL user message,
+  // verbatim and unmodified — so a real compaction call's final user text
+  // STARTS with the signature. Requiring the prefix (instead of searching
+  // anywhere in the body) keeps this gate from matching conversation turns
+  // that merely quote the signature inside tool results or history.
+  const text = messageText(last.content);
+  if (!text.startsWith(COMPACTION_SIGNATURE)) return false;
   for (const [key, value] of entries) {
     if (typeof key === "string" && typeof value === "number") body[key] = value;
   }
@@ -351,14 +374,18 @@ export function rewriteTitleBody(init, wire, models) {
   // Model gate: only rewrite bodies targeting an allowed model.
   if (!modelAllowed(body, models)) return false;
   if (!Array.isArray(body.messages) || body.messages.length === 0) return false;
-  // Confirm the signature actually sits inside a message (the title provider
-  // sends it as the system prompt; the role is adapter-mapped, e.g. `developer`
-  // or `system`, so scan every message's text instead of pinning a role).
+  // Confirm the signature actually sits in the TITLE PROMPT itself: the title
+  // provider sends it as the system prompt (adapter-mapped role, e.g.
+  // `developer` or `system`), verbatim and unmodified — so a real title call's
+  // system text STARTS with the signature. Requiring a system/developer role
+  // plus a prefix match keeps this gate from matching conversation turns that
+  // merely quote the signature inside tool results or history (e.g. while
+  // debugging this very plugin).
   let matched = false;
   for (const message of body.messages) {
     if (message === null || typeof message !== "object") continue;
-    const text = typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "");
-    if (text.includes(TITLE_SIGNATURE)) { matched = true; break; }
+    if (message.role !== "system" && message.role !== "developer") continue;
+    if (messageText(message.content).startsWith(TITLE_SIGNATURE)) { matched = true; break; }
   }
   if (!matched) return false;
   body.reasoning_effort = wire;
