@@ -1,0 +1,10 @@
+{
+  "name": "dsh-qwen38-compaction-fix",
+  "version": "0.1.0",
+  "description": "DSH plugin: thinking-off compaction and session-title fix for local qwen3.8-27b gateways",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "qwen", "compaction", "reasoning-effort"],
+  "license": "MIT",
+  "type": "module",
+  "main": "./index.js",
+  "files": ["index.js", "cordis.patch.yml", "README.md", "LICENSE"]
+}
