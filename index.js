@@ -188,17 +188,19 @@ const Config = z.object({
   /**
    * `max_tokens` floor applied to compaction request bodies: the wire value
    * is raised to at least this number so the summarizer gets its output
-   * budget back when pi-ai's client-side context clamp collapsed it. Never
-   * lowers the value. `0` or `null` disables the floor. Default 16384.
+   * budget back when pi-ai's client-side context clamp collapsed it (the
+   * clamp estimates context from a chars/4 heuristic for replayed history,
+   * which overestimates dense conversations and can drive `max_tokens` to 1).
+   * Never lowers the value. `0` or `null` disables the floor. Default 16384.
    */
   maxTokensFloor: z.number().default(DEFAULT_MAX_TOKENS_FLOOR),
   /**
    * `reasoning_effort` wire value written into session-title request bodies
    * (layer 4). The title provider freezes its LLM options before the
-   * waterfall, so the route default would otherwise eat the 64-token title
-   * budget in reasoning tokens and every generated title fails to the
-   * fallback. `""` disables the gate. Default `"none"` (the ninfer wire
-   * spelling of the "off" level).
+   * waterfall, so the route default (here: `xhigh`) would otherwise eat the
+   * 64-token title budget in reasoning tokens and every generated title
+   * fails to the fallback. `""` disables the gate. Default `"none"` (the
+   * ninfer wire spelling of the "off" level).
    */
   titleReasoning: z.string().default(DEFAULT_TITLE_REASONING)
 });
