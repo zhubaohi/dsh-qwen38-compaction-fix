@@ -2,3 +2,5 @@ node_modules/
 *.log
 .DS_Store
 npm-debug.log*
+# npm pack build artifact (the release asset is uploaded manually)
+*.tgz
