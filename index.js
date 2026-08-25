@@ -56,6 +56,23 @@
  * capacity and finishes with an honest `context_capacity` stop — never worse
  * than today's 1-token result.
  *
+ * Layer 4 (HTTP session-title reasoning off): the session-title provider
+ * (dsh-session-title-llm) issues its auxiliary call with the route's DEFAULT
+ * reasoning effort and a tiny output budget (`maxTokens: 64` by composition
+ * default). On a route whose gateway honors `reasoning_effort` and thinks at
+ * its default level, the model spends the entire 64-token budget on
+ * reasoning tokens, finishes `length` with EMPTY content, and every
+ * generated title fails back to the deterministic first-prompt fallback. The
+ * title plugin also deep-freezes its LLM options BEFORE the `llm/stream`
+ * waterfall, so layer 1's in-place stamp cannot reach it (the try/catch
+ * around the stamp exists for exactly that case). This layer reaches the
+ * call where the frozen object no longer matters — the wire body: when the
+ * chat-completion body carries the title system prompt (see
+ * `TITLE_SIGNATURE`) AND its `model` field is in `models`, it writes the
+ * configured `reasoning_effort` wire value into the body, so the title model
+ * emits plain text within the 64-token budget. `titleReasoning: ""` disables
+ * the gate.
+ *
  * Identity for layers 2+3 is the compaction engine's own instruction:
  * dsh-compaction-basic appends it as the FINAL user message of every
  * compaction call, so its first line is a stable signature in the body. (If
@@ -102,6 +119,13 @@ const DEFAULT_PURPOSES = ["compaction"];
  * `llm-pi-ai.providers.qwen.models[].id`. An empty list disables the policy.
  */
 const DEFAULT_MODELS = ["qwen3.8-27b"];
+/**
+ * Default `reasoning_effort` wire value written into session-title request
+ * bodies (layer 4). The local ninfer gateway maps the provider's "off" level
+ * to the wire spelling `none` (see the `reasoningEfforts` declaration in
+ * settings.yaml); `""` disables the title-effort gate entirely.
+ */
+const DEFAULT_TITLE_REASONING = "none";
 /**
  * Default `max_tokens` floor for compaction bodies. dsh-compaction-basic's
  * own budget defaults to 8192; 16384 gives the summary headroom while
@@ -167,7 +191,16 @@ const Config = z.object({
    * budget back when pi-ai's client-side context clamp collapsed it. Never
    * lowers the value. `0` or `null` disables the floor. Default 16384.
    */
-  maxTokensFloor: z.number().default(DEFAULT_MAX_TOKENS_FLOOR)
+  maxTokensFloor: z.number().default(DEFAULT_MAX_TOKENS_FLOOR),
+  /**
+   * `reasoning_effort` wire value written into session-title request bodies
+   * (layer 4). The title provider freezes its LLM options before the
+   * waterfall, so the route default would otherwise eat the 64-token title
+   * budget in reasoning tokens and every generated title fails to the
+   * fallback. `""` disables the gate. Default `"none"` (the ninfer wire
+   * spelling of the "off" level).
+   */
+  titleReasoning: z.string().default(DEFAULT_TITLE_REASONING)
 });
 
 /** Settings namespace carrying this plugin's policy. */
@@ -182,6 +215,14 @@ const COMPACT_EFFORT_SETTINGS_NAMESPACE = settingsNamespace("qwen38-compaction-f
  */
 export const COMPACTION_SIGNATURE = "You are now acting as a compaction engine for this AI coding assistant";
 
+/**
+ * First line of the dsh-session-title-llm system prompt, which the title
+ * provider sends verbatim on every session-title call. Used to identify
+ * those requests at the HTTP layer (layer 4): the title plugin's LLM options
+ * are deep-frozen before the waterfall, so only the wire body is reachable.
+ */
+export const TITLE_SIGNATURE = "Create a concise title for an AI coding-assistant session from the supplied human messages";
+
 /** Marks the wrapped global fetch so `apply` never double-wraps. */
 const FETCH_WRAPPER_MARK = Symbol.for("qwen38-compaction-fix.fetch-wrapper");
 
@@ -190,7 +231,7 @@ const FETCH_WRAPPER_MARK = Symbol.for("qwen38-compaction-fix.fetch-wrapper");
  * (in-process profile reload) never leaves the installed wrapper pointing
  * at a stale config.
  */
-let policySource = () => ({ entries: [], floor: 0, models: [] });
+let policySource = () => ({ entries: [], floor: 0, titleReasoning: "", models: [] });
 
 /**
  * Numeric sampling entries from one resolved config, in wire-key order.
@@ -208,16 +249,18 @@ function samplingEntries(sampling) {
 
 /**
  * The active HTTP-layer policy from one resolved config: the sampling
- * entries, an enabled max_tokens floor (0 = disabled), and the model
+ * entries, an enabled max_tokens floor (0 = disabled), the wire value
+ * written into session-title bodies ("" = gate disabled), and the model
  * allow-list ([] = policy disabled).
  */
 function policyOf(config) {
   const floorRaw = config?.maxTokensFloor;
   const floor = typeof floorRaw === "number" && Number.isFinite(floorRaw) && floorRaw > 0 ? Math.floor(floorRaw) : 0;
+  const titleReasoning = typeof config?.titleReasoning === "string" ? config.titleReasoning : "";
   const models = Array.isArray(config?.models)
     ? config.models.filter((m) => typeof m === "string" && m.length > 0)
     : [];
-  return { entries: samplingEntries(config?.sampling), floor, models };
+  return { entries: samplingEntries(config?.sampling), floor, titleReasoning, models };
 }
 
 /**
@@ -276,6 +319,52 @@ export function rewriteCompactionBody(init, policy) {
 }
 
 /**
+ * Rewrite `init.body` in place when `init` carries the JSON chat-completion
+ * body of a session-title call FOR AN ALLOWED MODEL: write the configured
+ * `reasoning_effort` wire value so the gateway does not spend the 64-token
+ * title budget on thinking. The compaction engine's own wire
+ * `max_tokens`/`max_completion_tokens` is left exactly as the title plugin
+ * set it (the floor is compaction-only). Every guard is conservative: any
+ * shape mismatch, parse failure, missing signature, or disallowed model
+ * leaves the request untouched.
+ * @param init - the fetch init holding the stringified JSON body.
+ * @param wire - the `reasoning_effort` wire value from the current config.
+ * @param models - the allow-list of exact model ids.
+ * @returns true when the body was rewritten.
+ */
+export function rewriteTitleBody(init, wire, models) {
+  if (typeof wire !== "string" || wire.length === 0) return false;
+  if (!Array.isArray(models) || models.length === 0) return false;
+  if (init === null || typeof init !== "object") return false;
+  if (typeof init.body !== "string" || init.body.length === 0) return false;
+  // Cheap pre-filter before parsing the body.
+  if (!init.body.includes(TITLE_SIGNATURE)) return false;
+  let body;
+  try {
+    body = JSON.parse(init.body);
+  } catch {
+    return false;
+  }
+  if (body === null || typeof body !== "object") return false;
+  // Model gate: only rewrite bodies targeting an allowed model.
+  if (!modelAllowed(body, models)) return false;
+  if (!Array.isArray(body.messages) || body.messages.length === 0) return false;
+  // Confirm the signature actually sits inside a message (the title provider
+  // sends it as the system prompt; the role is adapter-mapped, e.g. `developer`
+  // or `system`, so scan every message's text instead of pinning a role).
+  let matched = false;
+  for (const message of body.messages) {
+    if (message === null || typeof message !== "object") continue;
+    const text = typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "");
+    if (text.includes(TITLE_SIGNATURE)) { matched = true; break; }
+  }
+  if (!matched) return false;
+  body.reasoning_effort = wire;
+  init.body = JSON.stringify(body);
+  return true;
+}
+
+/**
  * Wrap the process-global `fetch` so compaction request bodies receive the
  * configured sampling settings and the max_tokens floor at send time — only
  * for bodies whose `model` field is in the allow-list. The OpenAI SDK
@@ -296,12 +385,17 @@ function installSamplingFetch(ctx, readPolicy) {
   }
   const originalFetch = g.fetch;
   let applied = 0;
+  let titleApplied = 0;
   const wrapper = async function compactionSamplingFetch(input, init) {
     let rewritten = false;
+    let titleRewritten = false;
     let policy;
     try {
       policy = policySource();
       rewritten = rewriteCompactionBody(init, policy);
+      // The title gate is independent of the compaction gate: a body is either
+      // the compaction call or a title call, never both.
+      if (!rewritten) titleRewritten = rewriteTitleBody(init, policy?.titleReasoning, policy?.models);
     } catch {
       /* Never break LLM traffic: proceed with the untouched request. */
     }
@@ -311,6 +405,10 @@ function installSamplingFetch(ctx, readPolicy) {
       ctx.logger.info(`qwen38-compaction-fix: rewriting compaction request bodies (sampling: ${keys}${floorNote})`);
     }
     if (rewritten) applied += 1;
+    if (titleRewritten && titleApplied === 0) {
+      ctx.logger.info(`qwen38-compaction-fix: rewriting session-title request bodies (reasoning_effort: ${policy?.titleReasoning})`);
+    }
+    if (titleRewritten) titleApplied += 1;
     return originalFetch.call(this, input, init);
   };
   wrapper[FETCH_WRAPPER_MARK] = true;
