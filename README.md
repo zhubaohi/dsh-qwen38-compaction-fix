@@ -4,7 +4,7 @@ Thinking-off compaction and session-title fix for local **qwen3.8-27b** gateways
 
 ## The problem
 
-Local qwen3.8-27b deployments (e.g. served through the ninfer gateway) think at their default level — `xhigh` in a typical route config — on every call that does not explicitly set a reasoning effort. DSH issues two auxiliary LLM calls on the conversation's own route:
+Local qwen3.8-27b deployments think at their default level — `xhigh` in a typical route config — on every call that does not explicitly set a reasoning effort. DSH issues two auxiliary LLM calls on the conversation's own route:
 
 1. **Compaction summarization** (`purpose: "compaction"`, dsh-compaction-basic) — condenses the conversation into a checkpoint when context pressure builds.
 2. **Session-title generation** (`purpose: "session-title"`, dsh-session-title-llm) — produces the sidebar title with a tiny output budget (`maxTokens: 64`).
