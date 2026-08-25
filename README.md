@@ -83,6 +83,10 @@ Identity at the HTTP layer relies on the instruction text shipped by dsh-compact
 - The HTTP-layer signatures track specific dsh releases; see "How it works" for the fail-open behavior.
 - This plugin shapes requests for the *local gateway* you run; it does not change the harness's own routing or the server's real capacity limits (the server still enforces them).
 
+## Testing
+
+The gating logic is covered by a smoke test (see [CHANGELOG.md](./CHANGELOG.md#verification)): allowed-model bodies are rewritten with the expected sampling/floor/reasoning values; disallowed-model, missing-model, and empty-allow-list bodies pass through byte-identical.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
