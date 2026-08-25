@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (2026-08-25)
+
+### Fixed
+
+- **Signature gates no longer match conversation turns that quote the provider prompts.** The compaction and session-title fetch layers previously identified their target requests by searching for the prompt signatures *anywhere* in the request body. A conversation turn whose history quoted either signature — tool results, file reads of this plugin's own source, session-log dumps — matched the title gate and got `reasoning_effort: none` stamped onto a normal chat request, making thinking look globally disabled. Both gates now require structural prefix matches: the compaction instruction must start the final user message's text, and the title prompt must start a system/developer message's text. Real compaction/title calls are unaffected (both providers send their prompts verbatim as the first text of those messages).
+
 ## 1.0.0 (2026-08-25)
 
 Initial release.
@@ -24,3 +30,7 @@ Gating smoke test against the published module (all cases pass):
 | Title body, model `qwen3.8-27b` | rewritten: `reasoning_effort: none`, `max_tokens` left alone |
 | Title body, model `Gemma4-12B-...` | untouched |
 | Title body, `titleReasoning: ""` | untouched |
+| Conversation turn quoting the compaction signature in a tool result | untouched (regression case) |
+| Conversation turn quoting the title signature in a tool result | untouched (regression case — was the bug) |
+| Last user message containing (not starting with) the compaction signature | untouched |
+| User-role message starting with the title signature | untouched (signature must be in system/developer) |
