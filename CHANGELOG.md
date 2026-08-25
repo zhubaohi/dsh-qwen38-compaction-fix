@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.2 (2026-08-25)
+
+### Changed
+
+- README title is now the product name: `Qwen3.8 Compaction Fix`.
+- Install section moved to the top of the README.
+- Prose in the README no longer uses dashes (em dashes replaced with colons and periods, hyphenated compounds reworded). Identifiers, code, and commands are unchanged.
+
+No code changes.
+
 ## 1.0.1 (2026-08-25)
 
 ### Changed
