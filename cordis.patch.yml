@@ -1,0 +1,35 @@
+# dsh-qwen38-compaction-fix — bundle patch.
+#
+# Registers the plugin on the host's `llm/stream` waterfall and installs its
+# process-local fetch wrapper. The config block below is the BASE layer:
+# a `qwen38-compaction-fix:` section in $DSH_HOME/settings.yaml overrides it
+# without a restart (see README.md).
+- insert:
+    - id: qwen38-compaction-fix
+      name: dsh-qwen38-compaction-fix
+      config:
+        # Stamp this reasoning effort onto matched calls. "" disables the
+        # effort policy (sampling/floor layers still apply while configured).
+        effort: off
+        # Exact model ids the policy applies to (case-sensitive, as declared
+        # under llm-pi-ai.providers.<provider>.models[].id in settings.yaml).
+        # A call/body whose model is not in this list passes through
+        # untouched. Empty list disables the whole policy.
+        models: [qwen3.8-27b]
+        # Sampling settings written verbatim into the compaction request body
+        # (wire field names). {} leaves sampling untouched.
+        sampling:
+          temperature: 0.7
+          top_p: 0.8
+          top_k: 20
+          min_p: 0.0
+          presence_penalty: 1.5
+          repetition_penalty: 1.0
+        # Raise the wire max_tokens of compaction bodies to at least this
+        # value (never lowers it) so the summarizer keeps its output budget
+        # when pi-ai's client-side context clamp collapses it. 0 disables.
+        maxTokensFloor: 16384
+        # Wire reasoning_effort value written into session-title request
+        # bodies ("none" = the ninfer spelling of the "off" level). ""
+        # disables the title gate.
+        titleReasoning: none
