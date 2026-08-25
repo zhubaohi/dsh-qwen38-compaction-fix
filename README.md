@@ -28,7 +28,7 @@ Everything else is untouched: the gates are purpose-based AND model-based (water
 dsh plugin --profile web add zhubaohi/dsh-qwen38-compaction-fix
 ```
 
-Then restart `dsh web` (or refresh the GUI page). No API keys, no network access, no telemetry.
+Then restart `dsh web` (or refresh the GUI page). 
 
 ## Configuration
 
