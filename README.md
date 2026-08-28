@@ -1,14 +1,24 @@
-# Qwen3.8 Compaction Fix
+# Qwen3.8 (NInfer) Compaction Fix
 
-Fix for a local **qwen3.8-27b** gateway that fails to compact. The model thinks at `xhigh`, spends the entire output token budget on reasoning before reaching a conclusion, and the compaction checkpoint comes back truncated. This [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) plugin disables thinking **for compaction calls only** and applies, to those calls, the sampling parameters the model recommends when thinking is off.
+Fix for a local **qwen3.8-27b** gateway running on the **NInfer** engine that fails to compact. The model thinks at `xhigh`, spends the entire output token budget on reasoning before reaching a conclusion, and the compaction checkpoint comes back truncated. This [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (`dsh`) plugin disables thinking **for compaction calls only** and applies, to those calls, the sampling parameters the model recommends when thinking is off.
+
+> **Scope: NInfer only.** This package is written for gateways served by the
+> [NInfer](https://github.com/Neroued/ninfer) engine (`ninfer-serve`, OpenAI-compatible API): the wire
+> fields it rewrites (`reasoning_effort`, `presence_penalty`, `repetition_penalty`, `min_p`) are the
+> ones the NInfer gateway interprets. If your qwen3.8 is launched by something else
+> (llama.cpp, vLLM, FastMTP, ...), the same idea — turn thinking off for dsh's compaction and
+> session-title calls so `xhigh` reasoning cannot burn the entire output budget — still applies,
+> but each engine speaks different wire parameters, so this package does not claim to fix those
+> launch methods.
 
 ## Install
 
 ```sh
-dsh plugin --profile web add zhubaohi/dsh-qwen38-compaction-fix
+dsh plugin --profile web add dsh-qwen38-ninfer-compaction-fix
 ```
 
-Then restart `dsh web` (or refresh the GUI page).
+Then restart `dsh web` (or refresh the GUI page). The plugin is also listed in the DSH
+[plugin market](https://github.com/dsh-market/dsh-market) (Settings → Plugin Market → search "qwen38").
 
 ## The symptom
 
@@ -99,7 +109,7 @@ An explicit `reasoningEffort` on the call itself always wins over the plugin def
 Four cooperating layers:
 
 1. **`llm/stream` waterfall:** for calls whose `purpose` is in `purposes` and whose `options.model` is in `models`, resolves the model's offered reasoning efforts and stamps the chosen effort in place before dispatch.
-2. **HTTP sampling:** wraps the process `fetch`; when a chat completion body carries the compaction engine's final instruction (a stable signature) and its `model` field is allowed, applies the configured sampling entries.
+2. **HTTP sampling:** wraps the process `fetch`; when a chat completion body carries the compaction engine's final instruction (a stable signature) and its `model` field is allowed, applies the configured sampling entries — wire fields as spelled for the NInfer gateway.
 3. **HTTP max_tokens floor:** same gate; raises the output cap to the floor; never lowers it.
 4. **HTTP session title reasoning:** when a body carries the title provider's system prompt (stable signature) and its `model` is allowed, writes the configured `reasoning_effort` wire value.
 
@@ -107,6 +117,7 @@ Identity at the HTTP layer relies on the instruction text shipped by dsh-compact
 
 ## Limitations
 
+- **Engine scope: NInfer.** The wire fields this plugin rewrites are the ones the NInfer gateway interprets. Gateways served by other engines (llama.cpp, vLLM, FastMTP, ...) may ignore or spell these fields differently; the same thinking-off idea can be ported to them, but that port is a different package.
 - Model matching is an **exact id match** against the id declared under `llm-pi-ai.providers.<provider>.models[].id` in `settings.yaml`. See the model name section above.
 - The HTTP layer signatures track specific dsh releases; see "How it works" for what happens when a signature stops matching.
 - This plugin shapes requests for the *local gateway* you run. It does not change the harness's own routing or the server's real capacity limits (the server still enforces them).

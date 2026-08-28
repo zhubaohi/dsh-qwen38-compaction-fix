@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.0 (2026-08-28)
+
+### Changed
+
+- Renamed to `dsh-qwen38-ninfer-compaction-fix` and the product is now titled **Qwen3.8 (NInfer) Compaction Fix**. The wire fields this plugin rewrites (`reasoning_effort`, `presence_penalty`, `repetition_penalty`, `min_p`) are interpreted by the NInfer gateway, so the README now states the engine scope plainly: this package fixes gateways served by NInfer (`ninfer-serve`), while the same thinking-off idea applies to other launch methods (llama.cpp, vLLM, FastMTP, ...) as a different port.
+- The old npm name `dsh-qwen38-compaction-fix` is deprecated; install with `dsh plugin --profile web add dsh-qwen38-ninfer-compaction-fix` (the plugin is also listed in the DSH plugin market).
+
+No code changes: the settings namespace stays `qwen38-compaction-fix:`, so existing overrides keep working.
+
 ## 1.0.2 (2026-08-25)
 
 ### Changed

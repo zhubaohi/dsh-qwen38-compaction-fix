@@ -1,8 +1,8 @@
 {
-  "name": "dsh-qwen38-compaction-fix",
-  "version": "1.0.2",
-  "description": "DSH plugin: fixes compaction failure on local qwen3.8-27b gateways — xhigh thinking burns the entire output token budget, so thinking is off for compaction-only, with the model's non-thinking sampling parameters",
-  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "qwen", "compaction", "reasoning-effort"],
+  "name": "dsh-qwen38-ninfer-compaction-fix",
+  "version": "1.1.0",
+  "description": "DSH plugin (NInfer engine only): fixes compaction failure on local qwen3.8-27b gateways served by NInfer — xhigh thinking burns the entire output token budget, so thinking is off for compaction-only, with the model's non-thinking sampling parameters; the same idea applies to other launch methods",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "qwen", "qwen3.8", "ninfer", "compaction", "reasoning-effort"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/zhubaohi/dsh-qwen38-compaction-fix.git"

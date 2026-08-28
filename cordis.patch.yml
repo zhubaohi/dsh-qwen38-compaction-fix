@@ -1,4 +1,4 @@
-# dsh-qwen38-compaction-fix — bundle patch.
+# dsh-qwen38-ninfer-compaction-fix — bundle patch.
 #
 # Registers the plugin on the host's `llm/stream` waterfall and installs its
 # process-local fetch wrapper. The config block below is the BASE layer:
@@ -6,7 +6,7 @@
 # without a restart (see README.md).
 - insert:
     - id: qwen38-compaction-fix
-      name: dsh-qwen38-compaction-fix
+      name: dsh-qwen38-ninfer-compaction-fix
       config:
         # Stamp this reasoning effort onto matched calls. "" disables the
         # effort policy (sampling/floor layers still apply while configured).
